@@ -13,5 +13,10 @@ func TestTest(t *testing.T) {
 	clusterInfo := ClusterInfo("test", nodes)
 
 	RunProxy(clusterInfo)
+	_ = ProxyQuery("", "qwerty", nil)
+	_ = ProxyQuery("", "qwerty", nil)
+	_ = ProxyQuery("10.50.3.227:9000", "qwerty", nil)
+	_ = ProxyQuery("", "qwerty", nil)
+	_ = ProxyQuery("", "qwerty", nil)
 	StopProxy()
 }

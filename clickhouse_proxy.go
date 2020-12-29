@@ -23,13 +23,6 @@ type clickhouseProxy struct {
 	quitCh chan bool
 }
 
-type NodeType struct {
-	conn *sql.DB
-	host string
-
-	heartbeat bool
-}
-
 var proxy *clickhouseProxy
 
 func RunProxy(clusterInfo *ClusterInfoType) {
@@ -74,55 +67,41 @@ func StopProxy() {
 	close(proxy.quitCh)
 }
 
-// goroutine
-func (n *NodeType) healthCheck() {
-	ticker := time.NewTicker(pingPeriod)
+func ProxyQuery(priorityNode string, query string, batch [][]interface{}) error {
+	nodeInd, roundRobin := proxy.getNodeIndAndRoundRobin(priorityNode)
 	defer func() {
-		ticker.Stop()
+		if roundRobin {
+			proxy.incNextNodeInd()
+		}
 	}()
 
-	for {
-		select {
-		case <-ticker.C:
-			err := n.conn.Ping()
-			if err == nil {
-				n.heartbeat = true
-			} else {
-				n.heartbeat = false
-			}
-
-		case <-proxy.quitCh:
-			return
-		}
+	if batch == nil {
+		return proxy.nodesConn[nodeInd].execQuery(query)
+	} else {
+		return proxy.nodesConn[nodeInd].execBatchQuery(query, batch)
 	}
 }
 
-// goroutine
-func (n *NodeType) tryToReconnect() {
-	ticker := time.NewTicker(pingPeriod)
-	defer func() {
-		ticker.Stop()
-	}()
-
-	for {
-		select {
-		case <-ticker.C:
-			addr := "tcp://" + n.host
-			if proxy.credentials != nil {
-				addr += fmt.Sprintf("?username=%s&password=%s", proxy.credentials.username, proxy.credentials.password)
+func (p *clickhouseProxy) getNodeIndAndRoundRobin(priorityNode string) (nodeInd int, roundRobin bool) {
+	if priorityNode != "" {
+		for i, node := range p.nodesConn {
+			if priorityNode == node.host {
+				return i, false
 			}
-			conn, err := sql.Open(driverName, addr)
-			if err != nil {
-				fmt.Println("Proxy has connected to host " + n.host)
-				n.conn = conn
-				n.heartbeat = true
-				go n.healthCheck()
-
-				return
-			}
-
-		case <-proxy.quitCh:
-			return
 		}
+
+		fmt.Println("Priority node is not found in cluster, round-robin will be used")
+		return p.nextNodeInd, true
+
+	} else {
+		return p.nextNodeInd, true
+	}
+}
+
+func (p *clickhouseProxy) incNextNodeInd() {
+	if p.nextNodeInd == len(p.nodesConn)-1 {
+		p.nextNodeInd = 0
+	} else {
+		p.nextNodeInd++
 	}
 }
