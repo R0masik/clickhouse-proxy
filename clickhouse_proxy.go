@@ -67,7 +67,7 @@ func StopProxy() {
 	close(proxy.quitCh)
 }
 
-func ProxyQuery(priorityNode string, query string, batch [][]interface{}) error {
+func ProxyQuery(priorityNode string, query string, batch [][]interface{}) (*sql.Rows, error) {
 	nodeInd, roundRobin := proxy.getNodeIndAndRoundRobin(priorityNode)
 	defer func() {
 		if roundRobin {
@@ -78,7 +78,7 @@ func ProxyQuery(priorityNode string, query string, batch [][]interface{}) error 
 	if batch == nil {
 		return proxy.nodesConn[nodeInd].execQuery(query)
 	} else {
-		return proxy.nodesConn[nodeInd].execBatchQuery(query, batch)
+		return nil, proxy.nodesConn[nodeInd].execBatchQuery(query, batch)
 	}
 }
 

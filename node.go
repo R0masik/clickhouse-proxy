@@ -66,12 +66,36 @@ func (n *NodeType) tryToReconnect() {
 	}
 }
 
-func (n *NodeType) execQuery(query string) error {
+func (n *NodeType) execQuery(query string) (*sql.Rows, error) {
 	fmt.Println("execQuery " + n.host)
-	return nil
+
+	return n.conn.Query(query)
 }
 
 func (n *NodeType) execBatchQuery(query string, batch [][]interface{}) error {
 	fmt.Println("execBatchQuery " + n.host)
-	return nil .
+
+	tx, err := n.conn.Begin()
+	if err != nil {
+		return err
+	}
+
+	stmt, err := tx.Prepare(query)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, batchItem := range batch {
+		_, err := stmt.Exec(batchItem...)
+		if err != nil {
+			return err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	return nil
 }
