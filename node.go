@@ -23,12 +23,7 @@ func (n *NodeType) healthCheck() {
 	for {
 		select {
 		case <-ticker.C:
-			err := n.conn.Ping()
-			if err == nil {
-				n.heartbeat = true
-			} else {
-				n.heartbeat = false
-			}
+			n.updateHeartbeat()
 
 		case <-proxy.quitCh:
 			return
@@ -36,32 +31,17 @@ func (n *NodeType) healthCheck() {
 	}
 }
 
-// goroutine
-func (n *NodeType) tryToReconnect() {
-	ticker := time.NewTicker(pingPeriod)
-	defer func() {
-		ticker.Stop()
-	}()
-
-	for {
-		select {
-		case <-ticker.C:
-			addr := "tcp://" + n.host
-			if proxy.credentials != nil {
-				addr += fmt.Sprintf("?username=%s&password=%s", proxy.credentials.username, proxy.credentials.password)
-			}
-			conn, err := sql.Open(driverName, addr)
-			if err != nil {
-				fmt.Println("Proxy has connected to host " + n.host)
-				n.conn = conn
-				n.heartbeat = true
-				go n.healthCheck()
-
-				return
-			}
-
-		case <-proxy.quitCh:
-			return
+func (n *NodeType) updateHeartbeat() {
+	err := n.conn.Ping()
+	if err == nil {
+		if n.heartbeat == false {
+			fmt.Println("Connected to "+n.host)
+			n.heartbeat = true
+		}
+	} else {
+		if n.heartbeat == true {
+			fmt.Println("Disconnected from "+n.host)
+			n.heartbeat = false
 		}
 	}
 }

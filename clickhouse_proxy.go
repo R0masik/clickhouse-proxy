@@ -2,6 +2,7 @@ package clickhouse_proxy
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -25,7 +26,7 @@ type clickhouseProxy struct {
 
 var proxy *clickhouseProxy
 
-func RunProxy(clusterInfo *ClusterInfoType) {
+func RunProxy(clusterInfo *ClusterInfoType) error {
 	proxy = &clickhouseProxy{
 		clusterName: clusterInfo.name,
 		nodesConn:   []*NodeType{},
@@ -37,30 +38,29 @@ func RunProxy(clusterInfo *ClusterInfoType) {
 	}
 
 	for _, node := range clusterInfo.nodes {
-		nodeConn := &NodeType{
-			conn: nil,
-			host: node,
-
-			heartbeat: false,
-		}
-
 		addr := "tcp://" + node
 		if proxy.credentials != nil {
 			addr += fmt.Sprintf("?username=%s&password=%s", proxy.credentials.username, proxy.credentials.password)
 		}
 		conn, err := sql.Open(driverName, addr)
 		if err != nil {
-			fmt.Println(err)
-			go nodeConn.tryToReconnect()
-		} else {
-			fmt.Println("Proxy has connected to host " + node)
-			nodeConn.conn = conn
-			nodeConn.heartbeat = true
-			go nodeConn.healthCheck()
+			close(proxy.quitCh)
+			return err
 		}
+
+		nodeConn := &NodeType{
+			conn: conn,
+			host: node,
+
+			heartbeat: false,
+		}
+		nodeConn.updateHeartbeat()
+		go nodeConn.healthCheck()
 
 		proxy.nodesConn = append(proxy.nodesConn, nodeConn)
 	}
+
+	return nil
 }
 
 func StopProxy() {
@@ -75,10 +75,15 @@ func ProxyQuery(priorityNode string, query string, batch [][]interface{}) (*sql.
 		}
 	}()
 
-	if batch == nil {
-		return proxy.nodesConn[nodeInd].execQuery(query)
+	node := proxy.nodesConn[nodeInd]
+	if node.heartbeat {
+		if batch == nil {
+			return node.execQuery(query)
+		} else {
+			return nil, node.execBatchQuery(query, batch)
+		}
 	} else {
-		return nil, proxy.nodesConn[nodeInd].execBatchQuery(query, batch)
+		return nil, errors.New("node is disconnected")
 	}
 }
 
