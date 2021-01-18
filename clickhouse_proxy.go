@@ -2,7 +2,6 @@ package clickhouse_proxy
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
 	"time"
 
@@ -71,19 +70,25 @@ func ProxyQuery(priorityNode string, query string, batch [][]interface{}) (*sql.
 	nodeInd, roundRobin := proxy.getNodeIndAndRoundRobin(priorityNode)
 	defer func() {
 		if roundRobin {
-			proxy.incNextNodeInd()
+			proxy.nextNodeInd = proxy.incNodeInd(proxy.nextNodeInd)
 		}
 	}()
 
-	node := proxy.nodesConn[nodeInd]
-	if node.heartbeat {
-		if batch == nil {
-			return node.execQuery(query)
-		} else {
-			return nil, node.execBatchQuery(query, batch)
+	// get current or next healthy node index
+	if !proxy.nodesConn[nodeInd].heartbeat {
+		for i := proxy.incNodeInd(nodeInd); i == nodeInd; i = proxy.incNodeInd(i) {
+			if proxy.nodesConn[i].heartbeat {
+				nodeInd = i
+				break
+			}
 		}
+	}
+
+	node := proxy.nodesConn[nodeInd]
+	if batch == nil {
+		return node.execQuery(query)
 	} else {
-		return nil, errors.New("node is disconnected")
+		return nil, node.execBatchQuery(query, batch)
 	}
 }
 
@@ -103,10 +108,10 @@ func (p *clickhouseProxy) getNodeIndAndRoundRobin(priorityNode string) (nodeInd 
 	}
 }
 
-func (p *clickhouseProxy) incNextNodeInd() {
-	if p.nextNodeInd == len(p.nodesConn)-1 {
-		p.nextNodeInd = 0
+func (p *clickhouseProxy) incNodeInd(i int) int {
+	if i < len(p.nodesConn)-1 {
+		return i + 1
 	} else {
-		p.nextNodeInd++
+		return 0
 	}
 }

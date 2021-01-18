@@ -19,21 +19,39 @@ func TestTest(t *testing.T) {
 		return
 	}
 
+	// 1
 	rows, err := ProxyQuery("", "show databases", nil)
 	if err != nil {
-		fmt.Println(err)
+		t.Fatal(err)
 		return
 	}
 	for rows.Next() {
 		var a string
 		err := rows.Scan(&a)
 		if err != nil {
-			fmt.Println(err)
+			t.Fatal(err)
 		} else {
 			fmt.Println(a)
 		}
 	}
 
+	// 2
+	rows, err = ProxyQuery("", "show databases", nil)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	for rows.Next() {
+		var a string
+		err := rows.Scan(&a)
+		if err != nil {
+			t.Fatal(err)
+		} else {
+			fmt.Println(a)
+		}
+	}
+
+	// 3
 	rows, err = ProxyQuery("", "show databases", nil)
 	if err != nil {
 		fmt.Println(err)
