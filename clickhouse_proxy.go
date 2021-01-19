@@ -23,10 +23,8 @@ type clickhouseProxy struct {
 	quitCh chan bool
 }
 
-var proxy *clickhouseProxy
-
-func RunProxy(clusterInfo *ClusterInfoType) error {
-	proxy = &clickhouseProxy{
+func RunProxy(clusterInfo *ClusterInfoType) (*clickhouseProxy, error) {
+	proxy := &clickhouseProxy{
 		clusterName: clusterInfo.name,
 		nodesConn:   []*NodeType{},
 		credentials: clusterInfo.credentials,
@@ -44,7 +42,7 @@ func RunProxy(clusterInfo *ClusterInfoType) error {
 		conn, err := sql.Open(driverName, addr)
 		if err != nil {
 			close(proxy.quitCh)
-			return err
+			return nil, err
 		}
 
 		nodeConn := &NodeType{
@@ -52,39 +50,43 @@ func RunProxy(clusterInfo *ClusterInfoType) error {
 			host: node,
 
 			heartbeat: false,
+
+			quitCh: make(chan bool),
 		}
-		nodeConn.updateHeartbeat()
 		go nodeConn.healthCheck()
 
 		proxy.nodesConn = append(proxy.nodesConn, nodeConn)
 	}
 
-	return nil
+	return proxy, nil
 }
 
-func StopProxy() {
-	close(proxy.quitCh)
+func (p *clickhouseProxy) StopProxy() {
+	for _, node := range p.nodesConn {
+		close(node.quitCh)
+	}
+	close(p.quitCh)
 }
 
-func ProxyQuery(priorityNode string, query string, batch [][]interface{}) (*sql.Rows, error) {
-	nodeInd, roundRobin := proxy.getNodeIndAndRoundRobin(priorityNode)
+func (p *clickhouseProxy) ProxyQuery(priorityNode string, query string, batch [][]interface{}) (*sql.Rows, error) {
+	nodeInd, roundRobin := p.getNodeIndAndRoundRobin(priorityNode)
 	defer func() {
 		if roundRobin {
-			proxy.nextNodeInd = proxy.incNodeInd(proxy.nextNodeInd)
+			p.nextNodeInd = p.incNodeInd(p.nextNodeInd)
 		}
 	}()
 
 	// get current or next healthy node index
-	if !proxy.nodesConn[nodeInd].heartbeat {
-		for i := proxy.incNodeInd(nodeInd); i == nodeInd; i = proxy.incNodeInd(i) {
-			if proxy.nodesConn[i].heartbeat {
+	if !p.nodesConn[nodeInd].heartbeat {
+		for i := p.incNodeInd(nodeInd); i != nodeInd; i = p.incNodeInd(i) {
+			if p.nodesConn[i].heartbeat {
 				nodeInd = i
 				break
 			}
 		}
 	}
 
-	node := proxy.nodesConn[nodeInd]
+	node := p.nodesConn[nodeInd]
 	if batch == nil {
 		return node.execQuery(query)
 	} else {

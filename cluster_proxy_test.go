@@ -3,24 +3,27 @@ package clickhouse_proxy
 import (
 	"fmt"
 	"testing"
+	"time"
 )
 
 func TestTest(t *testing.T) {
 	nodes := []string{
-		"10.50.3.227:9100",
-		"10.50.3.128:9000",
+		"10.50.3.128:9100",
+		"10.50.3.127:9000",
 		"10.50.3.129:9000",
 	}
 	clusterInfo := ClusterInfo("test", nodes)
 
-	err := RunProxy(clusterInfo)
+	proxy, err := RunProxy(clusterInfo)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
+	time.Sleep(1 * time.Second)
+
 	// 1
-	rows, err := ProxyQuery("", "show databases", nil)
+	rows, err := proxy.ProxyQuery("10.50.3.127:9000", "show databases", nil)
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -36,7 +39,7 @@ func TestTest(t *testing.T) {
 	}
 
 	//// 2
-	//rows, err = ProxyQuery("", "show databases", nil)
+	//rows, err = proxy.ProxyQuery("", "show databases", nil)
 	//if err != nil {
 	//	t.Fatal(err)
 	//	return
@@ -52,7 +55,7 @@ func TestTest(t *testing.T) {
 	//}
 	//
 	//// 3
-	//rows, err = ProxyQuery("", "show databases", nil)
+	//rows, err = proxy.ProxyQuery("", "show databases", nil)
 	//if err != nil {
 	//	fmt.Println(err)
 	//	return
@@ -67,8 +70,5 @@ func TestTest(t *testing.T) {
 	//	}
 	//}
 
-	//_, _ = ProxyQuery("10.50.3.227:9000", "qwerty", nil)
-	//_, _ = ProxyQuery("", "qwerty", nil)
-	//_, _ = ProxyQuery("", "qwerty", nil)
-	StopProxy()
+	proxy.StopProxy()
 }

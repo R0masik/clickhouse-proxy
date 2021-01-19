@@ -11,10 +11,15 @@ type NodeType struct {
 	host string
 
 	heartbeat bool
+
+	quitCh chan bool
 }
 
 // goroutine
 func (n *NodeType) healthCheck() {
+	// first try
+	n.updateHeartbeat()
+
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
@@ -25,7 +30,7 @@ func (n *NodeType) healthCheck() {
 		case <-ticker.C:
 			n.updateHeartbeat()
 
-		case <-proxy.quitCh:
+		case <-n.quitCh:
 			return
 		}
 	}
