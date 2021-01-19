@@ -2,6 +2,7 @@ package clickhouse_proxy
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -77,13 +78,29 @@ func (p *ClickhouseProxy) ProxyQuery(priorityNode string, query string, batch []
 	}()
 
 	// get current or next healthy node index
-	if !p.nodesConn[nodeInd].heartbeat {
-		for i := p.incNodeInd(nodeInd); i != nodeInd; i = p.incNodeInd(i) {
-			if p.nodesConn[i].heartbeat {
-				nodeInd = i
-				break
+	// 2 attempts
+	nodeIsHealthy := true
+	for attempt := 1; attempt <= 2; attempt++ {
+		if !p.nodesConn[nodeInd].heartbeat {
+			nodeIsHealthy = false
+			for i := p.incNodeInd(nodeInd); i != nodeInd; i = p.incNodeInd(i) {
+				if p.nodesConn[i].heartbeat {
+					nodeInd = i
+					nodeIsHealthy = true
+					break
+				}
 			}
 		}
+
+		if nodeIsHealthy {
+			break
+		}
+		if attempt == 1 {
+			time.Sleep(2 * time.Second)
+		}
+	}
+	if !nodeIsHealthy {
+		return nil, errors.New("there are no healthy nodes")
 	}
 
 	node := p.nodesConn[nodeInd]
