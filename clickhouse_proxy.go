@@ -13,7 +13,7 @@ const (
 	pingPeriod = 5 * time.Second
 )
 
-type clickhouseProxy struct {
+type ClickhouseProxy struct {
 	clusterName string
 	nodesConn   []*NodeType
 	credentials *CredentialsType
@@ -23,8 +23,8 @@ type clickhouseProxy struct {
 	quitCh chan bool
 }
 
-func RunProxy(clusterInfo *ClusterInfoType) (*clickhouseProxy, error) {
-	proxy := &clickhouseProxy{
+func RunProxy(clusterInfo *ClusterInfoType) (*ClickhouseProxy, error) {
+	proxy := &ClickhouseProxy{
 		clusterName: clusterInfo.name,
 		nodesConn:   []*NodeType{},
 		credentials: clusterInfo.credentials,
@@ -61,14 +61,14 @@ func RunProxy(clusterInfo *ClusterInfoType) (*clickhouseProxy, error) {
 	return proxy, nil
 }
 
-func (p *clickhouseProxy) StopProxy() {
+func (p *ClickhouseProxy) StopProxy() {
 	for _, node := range p.nodesConn {
 		close(node.quitCh)
 	}
 	close(p.quitCh)
 }
 
-func (p *clickhouseProxy) ProxyQuery(priorityNode string, query string, batch [][]interface{}) (*sql.Rows, error) {
+func (p *ClickhouseProxy) ProxyQuery(priorityNode string, query string, batch [][]interface{}) (*sql.Rows, error) {
 	nodeInd, roundRobin := p.getNodeIndAndRoundRobin(priorityNode)
 	defer func() {
 		if roundRobin {
@@ -94,7 +94,7 @@ func (p *clickhouseProxy) ProxyQuery(priorityNode string, query string, batch []
 	}
 }
 
-func (p *clickhouseProxy) getNodeIndAndRoundRobin(priorityNode string) (nodeInd int, roundRobin bool) {
+func (p *ClickhouseProxy) getNodeIndAndRoundRobin(priorityNode string) (nodeInd int, roundRobin bool) {
 	if priorityNode != "" {
 		for i, node := range p.nodesConn {
 			if priorityNode == node.host {
@@ -110,7 +110,7 @@ func (p *clickhouseProxy) getNodeIndAndRoundRobin(priorityNode string) (nodeInd 
 	}
 }
 
-func (p *clickhouseProxy) incNodeInd(i int) int {
+func (p *ClickhouseProxy) incNodeInd(i int) int {
 	if i < len(p.nodesConn)-1 {
 		return i + 1
 	} else {
