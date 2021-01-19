@@ -2,7 +2,6 @@ package clickhouse_proxy
 
 import (
 	"database/sql"
-	"fmt"
 	"time"
 )
 
@@ -40,26 +39,20 @@ func (n *NodeType) updateHeartbeat() {
 	err := n.conn.Ping()
 	if err == nil {
 		if n.heartbeat == false {
-			fmt.Println("Connected to "+n.host)
 			n.heartbeat = true
 		}
 	} else {
 		if n.heartbeat == true {
-			fmt.Println("Disconnected from "+n.host)
 			n.heartbeat = false
 		}
 	}
 }
 
 func (n *NodeType) execQuery(query string) (*sql.Rows, error) {
-	fmt.Println("execQuery " + n.host)
-
 	return n.conn.Query(query)
 }
 
 func (n *NodeType) execBatchQuery(query string, batch [][]interface{}) error {
-	fmt.Println("execBatchQuery " + n.host)
-
 	tx, err := n.conn.Begin()
 	if err != nil {
 		return err

@@ -119,7 +119,6 @@ func (p *ClickhouseProxy) getNodeIndAndRoundRobin(priorityNode string) (nodeInd 
 			}
 		}
 
-		fmt.Println("Priority node is not found in cluster, round-robin will be used")
 		return p.nextNodeInd, true
 
 	} else {
