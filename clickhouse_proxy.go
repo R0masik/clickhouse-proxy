@@ -59,7 +59,20 @@ func RunProxy(clusterInfo *ClusterInfoType) (*ClickhouseProxy, error) {
 		proxy.nodesConn = append(proxy.nodesConn, nodeConn)
 	}
 
-	return proxy, nil
+	timer := time.NewTimer(10 * time.Second)
+	for {
+		select {
+		case <-timer.C:
+			return proxy, nil
+
+		default:
+			for _, node := range proxy.nodesConn {
+				if node.IsHealthy() {
+					return proxy, nil
+				}
+			}
+		}
+	}
 }
 
 func (p *ClickhouseProxy) StopProxy() {
@@ -81,10 +94,10 @@ func (p *ClickhouseProxy) ProxyQuery(priorityNode string, query string, batch []
 	// 2 attempts
 	nodeIsHealthy := true
 	for attempt := 1; attempt <= 2; attempt++ {
-		if !p.nodesConn[nodeInd].heartbeat {
+		if !p.nodesConn[nodeInd].IsHealthy() {
 			nodeIsHealthy = false
 			for i := p.incNodeInd(nodeInd); i != nodeInd; i = p.incNodeInd(i) {
-				if p.nodesConn[i].heartbeat {
+				if p.nodesConn[i].IsHealthy() {
 					nodeInd = i
 					nodeIsHealthy = true
 					break

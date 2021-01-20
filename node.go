@@ -14,6 +14,10 @@ type NodeType struct {
 	quitCh chan bool
 }
 
+func (n *NodeType) IsHealthy() bool {
+	return n.heartbeat
+}
+
 // goroutine
 func (n *NodeType) healthCheck() {
 	// first try
