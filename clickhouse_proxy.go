@@ -82,7 +82,34 @@ func (p *ClickhouseProxy) StopProxy() {
 	close(p.quitCh)
 }
 
-func (p *ClickhouseProxy) ProxyQuery(priorityNode string, query string, batch [][]interface{}) (*sql.Rows, error) {
+func (p *ClickhouseProxy) ProxyExec(priorityNode, query string) (sql.Result, error) {
+	node, err := p.getNextNode(priorityNode)
+	if err != nil {
+		return nil, err
+	}
+
+	return node.exec(query)
+}
+
+func (p *ClickhouseProxy) ProxyQuery(priorityNode string, query string) (*sql.Rows, error) {
+	node, err := p.getNextNode(priorityNode)
+	if err != nil {
+		return nil, err
+	}
+
+	return node.query(query)
+}
+
+func (p *ClickhouseProxy) ProxyBatchQuery(priorityNode string, query string, batch [][]interface{}) error {
+	node, err := p.getNextNode(priorityNode)
+	if err != nil {
+		return err
+	}
+
+	return node.batchQuery(query, batch)
+}
+
+func (p *ClickhouseProxy) getNextNode(priorityNode string) (*NodeType, error) {
 	nodeInd, roundRobin := p.getNodeIndAndRoundRobin(priorityNode)
 	defer func() {
 		if roundRobin {
@@ -90,8 +117,7 @@ func (p *ClickhouseProxy) ProxyQuery(priorityNode string, query string, batch []
 		}
 	}()
 
-	// get current or next healthy node index
-	// 2 attempts
+	// 2 attempts to get current or next healthy node index
 	nodeIsHealthy := true
 	for attempt := 1; attempt <= 2; attempt++ {
 		if !p.nodesConn[nodeInd].IsHealthy() {
@@ -116,12 +142,7 @@ func (p *ClickhouseProxy) ProxyQuery(priorityNode string, query string, batch []
 		return nil, errors.New("there are no healthy nodes")
 	}
 
-	node := p.nodesConn[nodeInd]
-	if batch == nil {
-		return node.execQuery(query)
-	} else {
-		return nil, node.execBatchQuery(query, batch)
-	}
+	return p.nodesConn[nodeInd], nil
 }
 
 func (p *ClickhouseProxy) getNodeIndAndRoundRobin(priorityNode string) (nodeInd int, roundRobin bool) {

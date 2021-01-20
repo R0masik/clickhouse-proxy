@@ -52,11 +52,15 @@ func (n *NodeType) updateHeartbeat() {
 	}
 }
 
-func (n *NodeType) execQuery(query string) (*sql.Rows, error) {
+func (n *NodeType) exec(query string) (sql.Result, error) {
+	return n.conn.Exec(query)
+}
+
+func (n *NodeType) query(query string) (*sql.Rows, error) {
 	return n.conn.Query(query)
 }
 
-func (n *NodeType) execBatchQuery(query string, batch [][]interface{}) error {
+func (n *NodeType) batchQuery(query string, batch [][]interface{}) error {
 	tx, err := n.conn.Begin()
 	if err != nil {
 		return err
