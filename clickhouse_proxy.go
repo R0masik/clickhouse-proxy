@@ -91,7 +91,7 @@ func (p *ClickhouseProxy) ProxyExec(priorityNode, query string) (sql.Result, err
 	return node.exec(query)
 }
 
-func (p *ClickhouseProxy) ProxyQuery(priorityNode string, query string) (*sql.Rows, error) {
+func (p *ClickhouseProxy) ProxyQuery(priorityNode, query string) (*sql.Rows, error) {
 	node, err := p.getNextNode(priorityNode)
 	if err != nil {
 		return nil, err
@@ -100,7 +100,7 @@ func (p *ClickhouseProxy) ProxyQuery(priorityNode string, query string) (*sql.Ro
 	return node.query(query)
 }
 
-func (p *ClickhouseProxy) ProxyBatchQuery(priorityNode string, query string, batch [][]interface{}) error {
+func (p *ClickhouseProxy) ProxyBatchQuery(priorityNode, query string, batch [][]interface{}) error {
 	node, err := p.getNextNode(priorityNode)
 	if err != nil {
 		return err
