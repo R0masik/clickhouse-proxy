@@ -72,6 +72,12 @@ func (n *NodeType) batchQuery(query string, batch [][]interface{}) error {
 	}
 	defer stmt.Close()
 
+	// there may be memory leaks due to its absence
+	defer func() {
+		stmt = nil
+		tx = nil
+	}()
+
 	for _, batchItem := range batch {
 		_, err := stmt.Exec(batchItem...)
 		if err != nil {
