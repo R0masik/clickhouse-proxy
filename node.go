@@ -70,10 +70,10 @@ func (n *NodeType) batchQuery(query string, batch [][]interface{}) error {
 	if err != nil {
 		return err
 	}
-	defer stmt.Close()
 
 	// there may be memory leaks due to its absence
 	defer func() {
+		stmt.Close()
 		stmt = nil
 		tx = nil
 	}()
