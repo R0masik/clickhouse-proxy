@@ -18,6 +18,11 @@ func (n *NodeType) IsHealthy() bool {
 	return n.heartbeat
 }
 
+func (n *NodeType) CloseConn() error {
+	close(n.quitCh)
+	return n.conn.Close()
+}
+
 // goroutine
 func (n *NodeType) healthCheck() {
 	// first try
@@ -70,13 +75,7 @@ func (n *NodeType) batchQuery(query string, batch [][]interface{}) error {
 	if err != nil {
 		return err
 	}
-
-	// there may be memory leaks due to its absence
-	defer func() {
-		stmt.Close()
-		stmt = nil
-		tx = nil
-	}()
+	defer stmt.Close()
 
 	for _, batchItem := range batch {
 		_, err := stmt.Exec(batchItem...)

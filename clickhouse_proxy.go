@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "github.com/ClickHouse/clickhouse-go"
@@ -80,6 +81,35 @@ func (p *ClickhouseProxy) StopProxy() {
 		close(node.quitCh)
 	}
 	close(p.quitCh)
+}
+
+func (p *ClickhouseProxy) ResetConnections() error {
+	var errorNodes []string
+	for _, node := range p.nodesConn {
+		addr := "tcp://" + node.host
+		if p.credentials != nil {
+			addr += fmt.Sprintf("?username=%s&password=%s", p.credentials.username, p.credentials.password)
+		}
+
+		conn, err := sql.Open(driverName, addr)
+		if err != nil {
+			errorNodes = append(errorNodes, node.host)
+		} else {
+			node.CloseConn()
+
+			node.conn = conn
+			node.heartbeat = false
+			node.quitCh = make(chan bool)
+
+			go node.healthCheck()
+		}
+	}
+	if len(errorNodes) > 0 {
+		errorText := fmt.Sprintf("Errors with reset connection to %s", strings.Join(errorNodes, ", "))
+		return errors.New(errorText)
+	}
+
+	return nil
 }
 
 func (p *ClickhouseProxy) ProxyExec(priorityNode, query string) (sql.Result, error) {
