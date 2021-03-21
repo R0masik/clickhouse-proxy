@@ -22,7 +22,8 @@ type ClickhouseProxy struct {
 
 	nextNodeInd int
 
-	quitCh chan bool
+	reloadedCh chan bool
+	quitCh     chan bool
 }
 
 func RunProxy(clusterInfo *ClusterInfoType) (*ClickhouseProxy, error) {
@@ -33,7 +34,8 @@ func RunProxy(clusterInfo *ClusterInfoType) (*ClickhouseProxy, error) {
 
 		nextNodeInd: 0,
 
-		quitCh: make(chan bool),
+		reloadedCh: make(chan bool),
+		quitCh:     make(chan bool),
 	}
 
 	for _, node := range clusterInfo.nodes {
@@ -64,11 +66,13 @@ func RunProxy(clusterInfo *ClusterInfoType) (*ClickhouseProxy, error) {
 	for {
 		select {
 		case <-timer.C:
+			close(proxy.reloadedCh)
 			return proxy, nil
 
 		default:
 			for _, node := range proxy.nodesConn {
 				if node.IsHealthy() {
+					close(proxy.reloadedCh)
 					return proxy, nil
 				}
 			}
@@ -83,7 +87,10 @@ func (p *ClickhouseProxy) StopProxy() {
 	close(p.quitCh)
 }
 
-func (p *ClickhouseProxy) ResetConnections() error {
+func (p *ClickhouseProxy) ReloadConnections() error {
+	p.reloadedCh = make(chan bool)
+	defer close(p.reloadedCh)
+
 	var errorNodes []string
 	for _, node := range p.nodesConn {
 		addr := "tcp://" + node.host
@@ -113,30 +120,39 @@ func (p *ClickhouseProxy) ResetConnections() error {
 }
 
 func (p *ClickhouseProxy) ProxyExec(priorityNode, query string) (sql.Result, error) {
-	node, err := p.getNextNode(priorityNode)
-	if err != nil {
-		return nil, err
-	}
+	select {
+	case <-p.reloadedCh:
+		node, err := p.getNextNode(priorityNode)
+		if err != nil {
+			return nil, err
+		}
 
-	return node.exec(query)
+		return node.exec(query)
+	}
 }
 
 func (p *ClickhouseProxy) ProxyQuery(priorityNode, query string) (*sql.Rows, error) {
-	node, err := p.getNextNode(priorityNode)
-	if err != nil {
-		return nil, err
-	}
+	select {
+	case <-p.reloadedCh:
+		node, err := p.getNextNode(priorityNode)
+		if err != nil {
+			return nil, err
+		}
 
-	return node.query(query)
+		return node.query(query)
+	}
 }
 
 func (p *ClickhouseProxy) ProxyBatchQuery(priorityNode, query string, batch [][]interface{}) error {
-	node, err := p.getNextNode(priorityNode)
-	if err != nil {
-		return err
-	}
+	select {
+	case <-p.reloadedCh:
+		node, err := p.getNextNode(priorityNode)
+		if err != nil {
+			return err
+		}
 
-	return node.batchQuery(query, batch)
+		return node.batchQuery(query, batch)
+	}
 }
 
 func (p *ClickhouseProxy) getNextNode(priorityNode string) (*NodeType, error) {
