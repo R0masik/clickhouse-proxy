@@ -22,8 +22,9 @@ type ClickhouseProxy struct {
 
 	nextNodeInd int
 
-	reloadedCh chan bool
-	quitCh     chan bool
+	reloaderIsRunningCh chan bool
+	reloadedCh          chan bool
+	quitCh              chan bool
 }
 
 func RunProxy(clusterInfo *ClusterInfoType) (*ClickhouseProxy, error) {
@@ -117,6 +118,35 @@ func (p *ClickhouseProxy) ReloadConnections() error {
 	}
 
 	return nil
+}
+
+func (p *ClickhouseProxy) RunConnectionReloader(timeout time.Duration) {
+	p.reloaderIsRunningCh = make(chan bool)
+	go p.reloadConnOnTimeout(timeout)
+}
+
+func (p *ClickhouseProxy) StopConnectionReloader() {
+	close(p.reloaderIsRunningCh)
+}
+
+// goroutine
+func (p *ClickhouseProxy) reloadConnOnTimeout(timeout time.Duration) {
+	ticker := time.NewTicker(timeout)
+	defer func() {
+		ticker.Stop()
+	}()
+
+	for {
+		select {
+		case <-ticker.C:
+			p.ReloadConnections()
+
+		case <-p.reloaderIsRunningCh:
+			return
+		case <-p.quitCh:
+			return
+		}
+	}
 }
 
 func (p *ClickhouseProxy) ProxyExec(priorityNode, query string) (sql.Result, error) {
