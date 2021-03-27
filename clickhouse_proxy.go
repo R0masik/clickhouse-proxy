@@ -149,6 +149,18 @@ func (p *ClickhouseProxy) reloadConnOnTimeout(timeout time.Duration) {
 	}
 }
 
+func (p *ClickhouseProxy) SetNodesMaxOpenConns(n int) {
+	for _, node := range p.nodesConn {
+		node.conn.SetMaxOpenConns(n)
+	}
+}
+
+func (p *ClickhouseProxy) SetNodesConnMaxLifetime(d time.Duration) {
+	for _, node := range p.nodesConn {
+		node.conn.SetConnMaxLifetime(d)
+	}
+}
+
 func (p *ClickhouseProxy) ProxyExec(priorityNode, query string) (sql.Result, error) {
 	select {
 	case <-p.reloadedCh:
