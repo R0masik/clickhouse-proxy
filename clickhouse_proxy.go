@@ -17,7 +17,7 @@ const (
 
 type ClickhouseProxy struct {
 	clusterName string
-	nodesConn   []*NodeType
+	nodes       []*NodeType
 	credentials *CredentialsType
 
 	nextNodeInd int
@@ -30,7 +30,7 @@ type ClickhouseProxy struct {
 func RunProxy(clusterInfo *ClusterInfoType) (*ClickhouseProxy, error) {
 	proxy := &ClickhouseProxy{
 		clusterName: clusterInfo.name,
-		nodesConn:   []*NodeType{},
+		nodes:       []*NodeType{},
 		credentials: clusterInfo.credentials,
 
 		nextNodeInd: 0,
@@ -39,28 +39,11 @@ func RunProxy(clusterInfo *ClusterInfoType) (*ClickhouseProxy, error) {
 		quitCh:     make(chan bool),
 	}
 
-	for _, node := range clusterInfo.nodes {
-		addr := "tcp://" + node
-		if proxy.credentials != nil {
-			addr += fmt.Sprintf("?username=%s&password=%s", proxy.credentials.username, proxy.credentials.password)
-		}
-		conn, err := sql.Open(driverName, addr)
-		if err != nil {
-			close(proxy.quitCh)
-			return nil, err
-		}
+	for _, host := range clusterInfo.hosts {
+		node := newNode(host, proxy.credentials)
+		go node.healthCheck()
 
-		nodeConn := &NodeType{
-			conn: conn,
-			host: node,
-
-			heartbeat: false,
-
-			quitCh: make(chan bool),
-		}
-		go nodeConn.healthCheck()
-
-		proxy.nodesConn = append(proxy.nodesConn, nodeConn)
+		proxy.nodes = append(proxy.nodes, node)
 	}
 
 	timer := time.NewTimer(10 * time.Second)
@@ -71,7 +54,7 @@ func RunProxy(clusterInfo *ClusterInfoType) (*ClickhouseProxy, error) {
 			return proxy, nil
 
 		default:
-			for _, node := range proxy.nodesConn {
+			for _, node := range proxy.nodes {
 				if node.IsHealthy() {
 					close(proxy.reloadedCh)
 					return proxy, nil
@@ -82,7 +65,7 @@ func RunProxy(clusterInfo *ClusterInfoType) (*ClickhouseProxy, error) {
 }
 
 func (p *ClickhouseProxy) StopProxy() {
-	for _, node := range p.nodesConn {
+	for _, node := range p.nodes {
 		close(node.quitCh)
 	}
 	close(p.quitCh)
@@ -92,8 +75,8 @@ func (p *ClickhouseProxy) ReloadConnections() error {
 	p.reloadedCh = make(chan bool)
 	defer close(p.reloadedCh)
 
-	var errorNodes []string
-	for _, node := range p.nodesConn {
+	var errorConnNodes []string
+	for _, node := range p.nodes {
 		addr := "tcp://" + node.host
 		if p.credentials != nil {
 			addr += fmt.Sprintf("?username=%s&password=%s", p.credentials.username, p.credentials.password)
@@ -101,7 +84,7 @@ func (p *ClickhouseProxy) ReloadConnections() error {
 
 		conn, err := sql.Open(driverName, addr)
 		if err != nil {
-			errorNodes = append(errorNodes, node.host)
+			errorConnNodes = append(errorConnNodes, node.host)
 		} else {
 			node.CloseConn()
 
@@ -112,8 +95,8 @@ func (p *ClickhouseProxy) ReloadConnections() error {
 			go node.healthCheck()
 		}
 	}
-	if len(errorNodes) > 0 {
-		errorText := fmt.Sprintf("Errors with reset connection to %s", strings.Join(errorNodes, ", "))
+	if len(errorConnNodes) > 0 {
+		errorText := fmt.Sprintf("Errors with reset connection to %s", strings.Join(errorConnNodes, ", "))
 		return errors.New(errorText)
 	}
 
@@ -129,34 +112,14 @@ func (p *ClickhouseProxy) StopConnectionReloader() {
 	close(p.reloaderIsRunningCh)
 }
 
-// goroutine
-func (p *ClickhouseProxy) reloadConnOnTimeout(timeout time.Duration) {
-	ticker := time.NewTicker(timeout)
-	defer func() {
-		ticker.Stop()
-	}()
-
-	for {
-		select {
-		case <-ticker.C:
-			p.ReloadConnections()
-
-		case <-p.reloaderIsRunningCh:
-			return
-		case <-p.quitCh:
-			return
-		}
-	}
-}
-
 func (p *ClickhouseProxy) SetNodesMaxOpenConns(n int) {
-	for _, node := range p.nodesConn {
+	for _, node := range p.nodes {
 		node.conn.SetMaxOpenConns(n)
 	}
 }
 
 func (p *ClickhouseProxy) SetNodesConnMaxLifetime(d time.Duration) {
-	for _, node := range p.nodesConn {
+	for _, node := range p.nodes {
 		node.conn.SetConnMaxLifetime(d)
 	}
 }
@@ -197,6 +160,26 @@ func (p *ClickhouseProxy) ProxyBatchQuery(priorityNode, query string, batch [][]
 	}
 }
 
+// goroutine
+func (p *ClickhouseProxy) reloadConnOnTimeout(timeout time.Duration) {
+	ticker := time.NewTicker(timeout)
+	defer func() {
+		ticker.Stop()
+	}()
+
+	for {
+		select {
+		case <-ticker.C:
+			p.ReloadConnections()
+
+		case <-p.reloaderIsRunningCh:
+			return
+		case <-p.quitCh:
+			return
+		}
+	}
+}
+
 func (p *ClickhouseProxy) getNextNode(priorityNode string) (*NodeType, error) {
 	nodeInd, roundRobin := p.getNodeIndAndRoundRobin(priorityNode)
 	defer func() {
@@ -208,10 +191,10 @@ func (p *ClickhouseProxy) getNextNode(priorityNode string) (*NodeType, error) {
 	// 2 attempts to get current or next healthy node index
 	nodeIsHealthy := true
 	for attempt := 1; attempt <= 2; attempt++ {
-		if !p.nodesConn[nodeInd].IsHealthy() {
+		if !p.nodes[nodeInd].IsHealthy() {
 			nodeIsHealthy = false
 			for i := p.incNodeInd(nodeInd); i != nodeInd; i = p.incNodeInd(i) {
-				if p.nodesConn[i].IsHealthy() {
+				if p.nodes[i].IsHealthy() {
 					nodeInd = i
 					nodeIsHealthy = true
 					break
@@ -230,12 +213,12 @@ func (p *ClickhouseProxy) getNextNode(priorityNode string) (*NodeType, error) {
 		return nil, errors.New("there are no healthy nodes")
 	}
 
-	return p.nodesConn[nodeInd], nil
+	return p.nodes[nodeInd], nil
 }
 
 func (p *ClickhouseProxy) getNodeIndAndRoundRobin(priorityNode string) (nodeInd int, roundRobin bool) {
 	if priorityNode != "" {
-		for i, node := range p.nodesConn {
+		for i, node := range p.nodes {
 			if priorityNode == node.host {
 				return i, false
 			}
@@ -249,7 +232,7 @@ func (p *ClickhouseProxy) getNodeIndAndRoundRobin(priorityNode string) (nodeInd 
 }
 
 func (p *ClickhouseProxy) incNodeInd(i int) int {
-	if i < len(p.nodesConn)-1 {
+	if i < len(p.nodes)-1 {
 		return i + 1
 	} else {
 		return 0

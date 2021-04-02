@@ -2,25 +2,44 @@ package clickhouse_proxy
 
 import (
 	"database/sql"
+	"fmt"
 	"time"
 )
 
 type NodeType struct {
-	conn *sql.DB
-	host string
+	conn        *sql.DB
+	host        string
+	credentials *CredentialsType
 
 	heartbeat bool
 
 	quitCh chan bool
 }
 
-func (n *NodeType) IsHealthy() bool {
-	return n.heartbeat
+func newNode(host string, credentials *CredentialsType) *NodeType {
+	return &NodeType{
+		conn:        nil,
+		host:        host,
+		credentials: credentials,
+
+		heartbeat: false,
+
+		quitCh: make(chan bool),
+	}
 }
 
-func (n *NodeType) CloseConn() error {
-	close(n.quitCh)
-	return n.conn.Close()
+func (n *NodeType) connect() error {
+	addr := "tcp://" + n.host
+	if n.credentials != nil {
+		addr += fmt.Sprintf("?username=%s&password=%s", n.credentials.username, n.credentials.password)
+	}
+	conn, err := sql.Open(driverName, addr)
+	if err != nil {
+		return err
+	}
+	n.conn = conn
+
+	return nil
 }
 
 // goroutine
@@ -45,15 +64,23 @@ func (n *NodeType) healthCheck() {
 }
 
 func (n *NodeType) updateHeartbeat() {
-	err := n.conn.Ping()
-	if err == nil {
-		if n.heartbeat == false {
+	connLost := false
+	if n.conn != nil {
+		if err := n.conn.Ping(); err != nil {
+			connLost = true
+		}
+	} else {
+		connLost = true
+	}
+
+	if connLost {
+		n.heartbeat = false
+		err := n.connect()
+		if err == nil {
 			n.heartbeat = true
 		}
 	} else {
-		if n.heartbeat == true {
-			n.heartbeat = false
-		}
+		n.heartbeat = true
 	}
 }
 
@@ -89,4 +116,13 @@ func (n *NodeType) batchQuery(query string, batch [][]interface{}) error {
 	}
 
 	return nil
+}
+
+func (n *NodeType) IsHealthy() bool {
+	return n.heartbeat
+}
+
+func (n *NodeType) CloseConn() error {
+	close(n.quitCh)
+	return n.conn.Close()
 }

@@ -2,7 +2,7 @@ package clickhouse_proxy
 
 type ClusterInfoType struct {
 	name        string
-	nodes       []string
+	hosts       []string
 	credentials *CredentialsType
 }
 
@@ -11,10 +11,10 @@ type CredentialsType struct {
 	password string
 }
 
-func ClusterInfo(name string, nodes []string) *ClusterInfoType {
+func ClusterInfo(name string, hosts []string) *ClusterInfoType {
 	return &ClusterInfoType{
 		name:        name,
-		nodes:       nodes,
+		hosts:       hosts,
 		credentials: nil,
 	}
 }
