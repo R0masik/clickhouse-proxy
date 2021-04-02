@@ -114,13 +114,13 @@ func (p *ClickhouseProxy) StopConnectionReloader() {
 
 func (p *ClickhouseProxy) SetNodesMaxOpenConns(n int) {
 	for _, node := range p.nodes {
-		node.conn.SetMaxOpenConns(n)
+		node.setMaxOpenConns(n)
 	}
 }
 
 func (p *ClickhouseProxy) SetNodesConnMaxLifetime(d time.Duration) {
 	for _, node := range p.nodes {
-		node.conn.SetConnMaxLifetime(d)
+		node.setConnMaxLifetime(d)
 	}
 }
 

@@ -16,6 +16,39 @@ type NodeType struct {
 	quitCh chan bool
 }
 
+func (n *NodeType) IsHealthy() bool {
+	return n.heartbeat
+}
+
+func (n *NodeType) CloseConn() error {
+	close(n.quitCh)
+	return n.conn.Close()
+}
+
+func (n *NodeType) setMaxOpenConns(num int) {
+	for !n.heartbeat {
+		select {
+		case <-n.quitCh:
+			return
+		default:
+			time.Sleep(pingPeriod)
+		}
+	}
+	n.conn.SetMaxOpenConns(num)
+}
+
+func (n *NodeType) setConnMaxLifetime(d time.Duration) {
+	for !n.heartbeat {
+		select {
+		case <-n.quitCh:
+			return
+		default:
+			time.Sleep(pingPeriod)
+		}
+	}
+	n.conn.SetConnMaxLifetime(d)
+}
+
 func newNode(host string, credentials *CredentialsType) *NodeType {
 	return &NodeType{
 		conn:        nil,
@@ -116,13 +149,4 @@ func (n *NodeType) batchQuery(query string, batch [][]interface{}) error {
 	}
 
 	return nil
-}
-
-func (n *NodeType) IsHealthy() bool {
-	return n.heartbeat
-}
-
-func (n *NodeType) CloseConn() error {
-	close(n.quitCh)
-	return n.conn.Close()
 }
