@@ -97,20 +97,22 @@ func (n *NodeType) healthCheck() {
 }
 
 func (n *NodeType) updateHeartbeat() {
-	connLost := false
+	connLost := true
 	if n.conn != nil {
-		if err := n.conn.Ping(); err != nil {
-			connLost = true
+		err := n.conn.Ping()
+		if err == nil {
+			connLost = false
 		}
-	} else {
-		connLost = true
 	}
 
 	if connLost {
 		n.heartbeat = false
 		err := n.connect()
 		if err == nil {
-			n.heartbeat = true
+			pingErr := n.conn.Ping()
+			if pingErr == nil {
+				n.heartbeat = true
+			}
 		}
 	} else {
 		n.heartbeat = true
